@@ -6,6 +6,7 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 // const encrypt = require('mongoose-encryption');
 const md5 = require('md5');
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -40,20 +41,26 @@ app.get("/register", function(req, res){
 app.post("/register", async function(req, res){
     console.log('Request Body ->', req.body);
 
-    const newUser = User({
-        username: req.body.username,
-        password: md5(req.body.password)
-    });
-
-    let response = await newUser.save();
-    newUser.save().then(function(err, response){
+    bcrypt.hash(req.body.password, Number(process.env.SALTROUNDS), async function(err, hash) {
         if(err){
-            console.log('Error ->', err);
+            console.log('Unable to hash password ->', err);
+            res.send(err);
         } else {
-            console.log('Register response ->', response);
+            const newUser = User({
+                username: req.body.username,
+                password: hash
+            });
+            let response = await newUser.save();
+            newUser.save().then(function(err, response){
+                if(err){
+                    console.log('Error ->', err);
+                } else {
+                    console.log('Register response ->', response);
+                }
+            })
+            res.render('secrets');
         }
-    })
-    res.render('secrets');
+    });
 });
 
 app.post("/login", async function(req, res){
@@ -62,15 +69,22 @@ app.post("/login", async function(req, res){
     const username = req.body.username;
     const password = req.body.password;
 
+
+
     await User.findOne({username: username}).then(function(foundData, err){
         if(err){
             console.log('Error ->', err);
         } else {
             if(foundData){
             console.log('Found data ->',foundData);
-            if(foundData.password === md5(password) ){
-                res.status(200).render('secrets');
-            }
+            bcrypt.compare(password, foundData.password, function(err, result) {
+                if(err){
+                    console.log('Error authenticating user ->', err);
+                } else if(result === true ) {
+                    console.log('User authenticated ->', result);
+                    res.status(200).render('secrets');
+                }
+            });
         }
         }
     });
